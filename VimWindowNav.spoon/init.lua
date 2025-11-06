@@ -39,8 +39,9 @@ obj.license = "MIT - https://opensource.org/licenses/MIT"
 
 --- VimWindowNav.hotkey_modifier
 --- Variable
---- The main hotkey modifier combination. Default: "ctrl+alt"
---- Options: "cmd", "ctrl", "alt", "shift", or combinations like "cmd+ctrl"
+--- The main hotkey modifier combination.
+--- Accepts either a string like "ctrl+alt" or a table like {"ctrl","alt"}.
+--- Default: "ctrl+alt"
 obj.hotkey_modifier = "ctrl+alt"
 
 --- VimWindowNav.debug
@@ -63,12 +64,43 @@ local function log(self, message)
     end
 end
 
-local function getModifierKeys(modifier_string)
-    local modifiers = {}
-    for mod in modifier_string:gmatch("[^+]+") do
-        table.insert(modifiers, mod)
+-- Normalize modifiers: accept string or table
+local function normalizeModifiers(mods)
+    if type(mods) == "table" then
+        -- Already a table, return as-is (but ensure lowercase)
+        local normalized = {}
+        for _, mod in ipairs(mods) do
+            if type(mod) == "string" then
+                table.insert(normalized, mod:lower():match("^%s*(.-)%s*$"))
+            end
+        end
+        return normalized
+    elseif type(mods) == "string" then
+        -- Parse string like "cmd+ctrl" into table
+        local out = {}
+        for m in mods:gmatch("[^+]+") do
+            m = m:match("^%s*(.-)%s*$")  -- Trim whitespace
+            if m and m ~= "" then
+                table.insert(out, m:lower())
+            end
+        end
+        return out
+    elseif mods == nil then
+        return {"ctrl", "alt"}  -- Default fallback
+    else
+        error("hotkey_modifier must be a string like 'cmd+ctrl' or a table like {'cmd','ctrl'}")
     end
-    return modifiers
+end
+
+-- Pretty-print modifiers for logs
+local function modsToString(mods)
+    if type(mods) == "table" then
+        return table.concat(mods, "+")
+    elseif type(mods) == "string" then
+        return mods
+    else
+        return tostring(mods)
+    end
 end
 
 -- Window management functions using Hammerspoon's built-in convenience functions
@@ -144,7 +176,7 @@ local function setupHotkeys(self)
     -- Clear existing hotkeys
     self:stop()
     
-    local modifiers = getModifierKeys(self.hotkey_modifier)
+    local modifiers = normalizeModifiers(self.hotkey_modifier)
     
     -- Focus windows (hjkl)
     self._hotkeys.h = hs.hotkey.bind(modifiers, "h", function()
@@ -167,7 +199,7 @@ local function setupHotkeys(self)
         focusWindow(self, "east")
     end)
     
-    log(self, "Hotkeys configured with modifier: " .. self.hotkey_modifier)
+    log(self, "Hotkeys configured with modifier: " .. modsToString(modifiers))
 end
 
 --- VimWindowNav:start()
@@ -234,8 +266,9 @@ end
 --- Returns:
 ---  * The VimWindowNav object
 function obj:setHotkeyModifier(newModifier)
-    self.hotkey_modifier = newModifier
-    log(self, "Hotkey modifier changed to: " .. newModifier)
+    local normalized = normalizeModifiers(newModifier)
+    self.hotkey_modifier = normalized
+    log(self, "Hotkey modifier changed to: " .. modsToString(normalized))
     self:restart()
     return self
 end
